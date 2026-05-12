@@ -47,6 +47,10 @@ source.
 
 * **Works offline and respects your privacy.** Loop doesn't require an Internet connection or online account registration. Your confidential data is never sent to anyone. Neither the developers nor any third-parties have access to it.
 
+## Web client (experimental)
+
+A browser version is being scaffolded under [`uhabits-web/`](uhabits-web/). It is a separate Vite + React + TypeScript app that does not affect the Android build. See [`WEB_UI_PLAN.md`](WEB_UI_PLAN.md) for the staged roadmap.
+
 ## Installing
 
 The easiest way to install Loop is through the [Google Play Store][playstore] or [F-Droid][fdroid].
