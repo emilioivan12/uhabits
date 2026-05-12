@@ -70,13 +70,47 @@ All 83 tests still passing; typecheck clean after fixes.
 
 ---
 
+## Step 2 — Port `SQLParser.kt` → `sqlParser.ts` ✅
+
+**Date**: 2026-05-12
+**Status**: Complete
+
+### What was done
+
+1. **Created `uhabits-web/src/storage/sqlParser.ts`**
+   - Single exported function `parse(sql: string): string[]`.
+   - Faithful port of the Kotlin state machine: states `NONE | STRING | COMMENT | COMMENT_BLOCK`.
+   - String-based instead of stream-based — iterates over the input string by index rather than reading from an `InputStream`, which is idiomatic for TypeScript.
+   - Whitespace collapsing (tabs, newlines → single space; no leading space on empty buffer) mirrors Kotlin exactly.
+   - Empty strings are emitted for consecutive semicolons (`;;`) — same as Kotlin. Filtering empties is the caller's responsibility (migration runner will skip them in Step 4).
+
+2. **Created `uhabits-web/src/storage/sqlParser.test.ts`**
+   - 14 pathological-input cases (comments, strings, semicolons, whitespace, edge cases).
+   - 17 per-file smoke tests: every migration file produces a non-empty array of non-empty strings.
+   - 4 structural checks: `09.sql` → 5 CREATE TABLEs; `25.sql` → 1 ALTER TABLE; `22.sql` → 13 statements; `18.sql` (empty-string default `""`) → 3 statements.
+
+### Findings / deviations from plan
+
+- **Block comment between tokens does not inject a space**: `select/* comment */1;` parses to `select1`, not `select 1`. The Kotlin parser behaves identically — it transitions from COMMENT_BLOCK to NONE without touching the buffer. The test was corrected to match actual behaviour.
+- **Empty strings are not filtered by the parser**: `select 1;;` yields `["select 1", ""]`. This is faithful to Kotlin. The migration runner (Step 4) will filter empty statements before executing.
+
+### Verification results
+
+| Check | Result |
+|---|---|
+| `npm --prefix uhabits-web run typecheck` | ✅ No errors |
+| `npm --prefix uhabits-web run build` | ✅ Clean build (31 modules — sqlParser tree-shaken until Step 5 wires it in) |
+| `npm --prefix uhabits-web test` | ✅ 119/119 passing (83 Stage 1 + 36 new) |
+
+---
+
 ## Steps remaining
 
 | Step | Status |
 |---|---|
 | Step 1 — Dependency + migrations | ✅ Done |
-| Step 2 — Port `SQLParser.kt` → `sqlParser.ts` | 🔲 Next |
-| Step 3 — `WebDatabase` + `WebCursor` over sqlite-wasm | 🔲 Pending |
+| Step 2 — Port `SQLParser.kt` → `sqlParser.ts` | ✅ Done |
+| Step 3 — `WebDatabase` + `WebCursor` over sqlite-wasm | 🔲 Next |
 | Step 4 — Port `MigrationHelper.kt` → `migrationHelper.ts` | 🔲 Pending |
 | Step 5 — `dbOpener.ts` (OPFS + in-memory fallback) | 🔲 Pending |
 | Step 6 — Port `HabitRecord` + `EntryRecord` | 🔲 Pending |
