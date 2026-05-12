@@ -104,14 +104,61 @@ All 83 tests still passing; typecheck clean after fixes.
 
 ---
 
+---
+
+## Step 3 — Port `Database` interface + implement `WebDatabase` over sqlite-wasm ✅
+
+**Date**: 2026-05-12
+**Status**: Complete
+
+### What was done
+
+1. **Updated `tsconfig.app.json`**
+   - Added `"esnext.disposable"` to the `lib` array so TypeScript recognises `Symbol.dispose` and the `using` declaration syntax (TypeScript 5.2+, polyfilled via try/finally for ES2022 output).
+
+2. **Created `uhabits-web/src/storage/sqlite.ts`**
+   - `WebCursor` wraps a sqlite-wasm `PreparedStatement`:
+     - `moveToNext()` → `stmt.step()`
+     - `getInt/getLong/getDouble` → `stmt.get(index)` then `Number()` (using the generic accessor — see below)
+     - `getString(index)` → `stmt.getString(index)`
+     - `close()` → `stmt.finalize()`
+     - `[Symbol.dispose]()` → `this.close()` (enables `using cursor = db.query(...)`)
+   - `WebDatabase` wraps a sqlite-wasm `Database`:
+     - `query(q, ...params: string[])` → prepare + bind + return cursor (mirrors Kotlin signature)
+     - `update(table, values, where, ...params)` → builds `UPDATE … SET k=?` SQL, returns `db.changes()`
+     - `insert(table, values)` → builds `INSERT INTO … VALUES(?)` SQL, returns `last_insert_rowid()`
+     - `delete(table, where, ...params)` → delegates to `execute`
+     - `execute(query, ...params: DbValue[])` → uses `db.exec` (no params) or prepare+bind+stepFinalize
+     - `beginTransaction/setTransactionSuccessful/endTransaction` → `BEGIN`/flag/`COMMIT or ROLLBACK`
+     - `version` getter → `PRAGMA user_version` via `query()`
+
+3. **Created `uhabits-web/src/storage/sqlite.test.ts`**
+   - `// @vitest-environment node` — overrides the default jsdom environment for this file so the sqlite-wasm Node.js variant (`node.mjs`) is used and OPFS (unavailable in Node) is never attempted.
+   - 11 tests covering: fresh version (0), PRAGMA user_version round-trip, CREATE/INSERT/SELECT, insert returns row id, update returns affected count, delete, transaction commit, transaction rollback, null round-trip, getLong with large int, and `Symbol.dispose`.
+
+### Findings / deviations from plan
+
+- **`getInt()` must use `stmt.get(index)` not `stmt.getInt(index)`**: `sqlite3_column_int()` (which `getInt` maps to) returns `0` for NULL columns — the same as an actual 0 value. The generic `stmt.get(index)` accessor checks the column type first and returns `null` for NULL columns. The fix is consistent for `getInt`, `getLong`, and `getDouble`.
+- **`getString()` works correctly** with `stmt.getString(index)` since the string variant already returns `null` for NULL columns.
+
+### Verification results
+
+| Check | Result |
+|---|---|
+| `npm --prefix uhabits-web run typecheck` | ✅ No errors |
+| `npm --prefix uhabits-web run build` | ✅ Clean build (31 modules, 142 kB / 45 kB gzip) |
+| `npm --prefix uhabits-web test` | ✅ 130/130 passing (83 Stage 1 + 36 sqlParser + 11 sqlite) |
+
+---
+
 ## Steps remaining
 
 | Step | Status |
 |---|---|
 | Step 1 — Dependency + migrations | ✅ Done |
 | Step 2 — Port `SQLParser.kt` → `sqlParser.ts` | ✅ Done |
-| Step 3 — `WebDatabase` + `WebCursor` over sqlite-wasm | 🔲 Next |
-| Step 4 — Port `MigrationHelper.kt` → `migrationHelper.ts` | 🔲 Pending |
+| Step 3 — `WebDatabase` + `WebCursor` over sqlite-wasm | ✅ Done |
+| Step 4 — Port `MigrationHelper.kt` → `migrationHelper.ts` | 🔲 Next |
 | Step 5 — `dbOpener.ts` (OPFS + in-memory fallback) | 🔲 Pending |
 | Step 6 — Port `HabitRecord` + `EntryRecord` | 🔲 Pending |
 | Step 7 — `HabitRepository` + `EntryRepository` | 🔲 Pending |
